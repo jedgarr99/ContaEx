@@ -2,9 +2,10 @@
 """
 Created on Fri Oct  4 10:46:54 2019
 
-@author: RGAMBOAH
+@author: Jorge Edgar Rodriguez Ortiz Loyola 181334
 """
 import datetime as dt
+
 
 def iif(cond,vt,vf):
     if cond:
@@ -26,6 +27,9 @@ class Contabilidad:
         self.listaPartes[3] = ParteContable(3,"Capital","A")
         self.listaPartes[4] = ParteContable(4,"Ingresos","A")
         self.listaPartes[5] = ParteContable(5,"Egresos","D")
+        self.listaPolizas=[]
+        self.act=None
+        
 
    def altaCta(self,numCta,nombreCta,natCta):
        numParte = numCta // 100000
@@ -33,6 +37,8 @@ class Contabilidad:
           self.listaPartes[numParte].altaCta(numCta,nombreCta,natCta)
        else:
           raise Exception("Contabilidad: el número de cuenta no es válido")
+   
+       
    def registraPoliza(self,poliza):
        # verificamos que suma de cargos sea igual a suma de abonos
        sc = 0
@@ -55,17 +61,23 @@ class Contabilidad:
                self.listaPartes[numParte].verificaExistencia(m.numCta)
            else:
                raise Exception("La cta del movimiento " + str(m) + " es inválida" )
+       self.listaPolizas.append(poliza)
+       
        # registramos los movimientos
        for m in poliza.colMovtos:
            numParte = m.numCta // 100000
            self.listaPartes[numParte].registraMovto(m)
+           
+   def polizasRegistradas(self):
+       for x in  self.listaPolizas:
+           print(x)
+          
            
    def impBalance(self):  
        strRes = "\nBalance de " + self.empresa + '\n' 
        for p in self.listaPartes[1:]:
             strRes += p.impBalance()
        strRes += 61 * '-' + '\n'     
-       #1) El despliegue de la verificación de Activo = Pasivo + Capital + Ingresos - Egresos
        strRes +=  "Activo = \tPasivo \t+ Capital \t+ Ingresos \t- Egresos\n"
        strRes += str(self.listaPartes[1].saldo().monto) + " = \t" + str(self.listaPartes[2].saldo().monto) + " \t+ " + str(self.listaPartes[3].saldo().monto) + " \t+ " + str(self.listaPartes[4].saldo().monto) + " \t- " + str(self.listaPartes[5].saldo().monto) + "\n"  
        strRes += str(self.listaPartes[1].saldo().monto) + " = " + str(self.listaPartes[2].saldo().monto+self.listaPartes[3].saldo().monto+self.listaPartes[4].saldo().monto-self.listaPartes[5].saldo().monto)+"\n"    
@@ -76,43 +88,52 @@ class Contabilidad:
        strRes = "Contabilidad " + self.empresa + '\n'
        for x in self.listaPartes[1:]:
            strRes += str(x)
-       return strRes   
+       return strRes
+   def creaPoliza(self,numeroPoliza,descripcion):
+       self.act= PolizaContable(numeroPoliza,dt.datetime.today().strftime("%Y%m%d_%H%M%S"), descripcion)
    
-   #Reparto de Utilidades 
-   def PTU(self):
-       tot=self.listaPartes[3].colCtas.get(300100).saldo().monto
-       ptu=tot*0.10
-       self.altaCta(200500,"PTU por pagar","A")
-       polizaPTU=PolizaContable(2000, dt.datetime.today().strftime("%Y%m%d_%H%M%S"),"Reparto de Utilidades")
-       polizaPTU.cargo(300100, ptu)
-       polizaPTU.abono(200500, ptu)
-       self.registraPoliza(polizaPTU)
-       return "PTU: "+str(ptu)
-   
-  #Impuesto sobre la renta
-   def ISR(self):
-       ptu=self.listaPartes[3].colCtas.get(200500)
-       if ptu is None:
-           isr=self.listaPartes[3].colCtas.get(300100).saldo().monto*0.30
-       else:
-           isr=self.listaPartes[3].colCtas.get(300100).saldo().monto*0.27
-       self.altaCta(200600,"ISR por pagar","A")
-       polizaISR=PolizaContable(3000, dt.datetime.today().strftime("%Y%m%d_%H%M%S"),"Impuesto sobre la renta")
-       polizaISR.cargo(300100, isr)
-       polizaISR.abono(200600, isr)
-       self.registraPoliza(polizaISR)
+   def abono(self,numCta, cantidad):
+       if self.act != None:
+           self.act.abono(numCta,cantidad)
            
-       return "ISR: "+str(isr)
-   
-   #2) El cierre del ejercicio (método de la Contabilidad):
+   def cargo(self,numCta, cantidad):
+       if self.act != None:
+           self.act.cargo(numCta,cantidad)   
+           
+   def registraPolizaConta(self):
+          # verificamos que suma de cargos sea igual a suma de abonos
+       poliza=self.act
+       sc = 0
+       sa = 0
+       for m in poliza.colMovtos:
+           if m.tipo == "A":
+               sa += m.monto
+           elif m.tipo == "C":
+               sc += m.monto
+           else:
+               raise Exception("Tipo de movimiento inválido " + str(m))
+       if sa != sc :
+           raise Exception("Póliza " + str(poliza) + " ==== DESBALANCEADA ===" )
+           
+       # verificamos que todas las cuentas de los movimientos de la poliza existan
+       for m in poliza.colMovtos:
+           numParte = m.numCta // 100000
+           if 1 <= numParte <= 5:
+               # la parte contable arroja una excepción si la cta no existe
+               self.listaPartes[numParte].verificaExistencia(m.numCta)
+           else:
+               raise Exception("La cta del movimiento " + str(m) + " es inválida" )
+       self.listaPolizas.append(poliza)
+       
+       # registramos los movimientos
+       for m in poliza.colMovtos:
+           numParte = m.numCta // 100000
+           self.listaPartes[numParte].registraMovto(m)
+           
    def cierre(self):
        #2.1) Verificar que exista la cuenta "300100 Resultado del Ejercicio (A), en caso de no existir, darla de alta;
-       ban=False
-       for m in self.listaPartes[3]:
-           if m.numCta ==300100:
-               ban=True
-       if not ban:
-           self.altaCta(300100,"Resultado del ejercicio","A")
+       
+       self.altaCta(300100,"Resultado del ejercicio","A")
 
        #2.2) Crear la póliza de cierre (número 1000, fecha y hora del momento, "Cierre del Ejercicio"), para la fecha y hora del momento ver la instrucción en las pólizas del script);
        
@@ -128,9 +149,8 @@ class Contabilidad:
        self.listaPartes[5].cierre(polizaCierre)
        #2.5) Incidir la póliza de cierre
        self.registraPoliza(polizaCierre)
-   
+       
     
-   
 # ============================================================================  
 # ============================ ParteContable =================================
 # ============================================================================    
@@ -181,7 +201,14 @@ class ParteContable:
            strRes += cta.impBalance()
        strRes += '=' * 61  +'\n'  
        strRes += '**********' + self.impSaldo()
-       return strRes    
+       return strRes   
+    def cierre(self, polC):
+        for cta in self.colCtas.values():
+            tot=cta.saldo().monto
+            if self.nat=="D":
+                polC.abono(cta.num, tot)
+            else:
+                polC.cargo(cta.num, tot)
 
                 
     def __str__(self):
@@ -289,9 +316,13 @@ class MovtoConta:
 # =======================================================================================
 #                                         script de prueba         
 # =======================================================================================
-conta = Contabilidad("MiEmpre S.A.")
-#print(conta)
 
+cu='181334'
+nombre='Rodriguez Ortiz Loyola Jorge Edgar'
+
+print('CU:',cu,'Nombre:',nombre)
+
+conta = Contabilidad("Empre S.A. de " + nombre)
 conta.altaCta(100100,"Bancos","D")
 conta.altaCta(100200,"Inventario","D")
 conta.altaCta(100300,"Clientes","D")
@@ -307,17 +338,25 @@ pol_1.cargo(100100,10000.0)
 pol_1.abono(300000,10000.0)
 print(pol_1)
 print("===============================================")
-conta.registraPoliza(pol_1)
-print('Posterior al registro de la póliza 1')
-print(conta)
+try:
+  conta.registraPoliza(pol_1)
+except Exception as ex:
+  print(ex.args[0])
+finally:  
+  print('Posterior al registro de la póliza 1')
+  print(conta)
 print("===============================================")
 pol_2 = PolizaContable(2,dt.datetime.today().strftime("%Y%m%d_%H%M%S"),"Compra de mercancía para vender")
 pol_2.abono(100100,5000.0) # Se paga al contado
 pol_2.cargo(100200,5000.0) # Se guarda en el almacen (Inventario)
 print("===============================================")
-conta.registraPoliza(pol_2)
-print('Posterior al registro de la póliza 2')
-print(conta)
+try:
+  conta.registraPoliza(pol_2)
+except Exception as ex:
+  print(ex.args[0])
+finally:  
+  print('Posterior al registro de la póliza 2')
+  print(conta)
 print("++++++++++++++++++++++++++++++++++++++++++++++++")
 pol_3 = PolizaContable(3,dt.datetime.today().strftime("%Y%m%d_%H%M%S"),"Venta en 1500.0, al contado de mercancia que costó 1000.0")
 pol_3.abono(100200,1000.0)
@@ -325,9 +364,14 @@ pol_3.cargo(500100,1000.0)
 pol_3.abono(400100,1500.0)
 pol_3.cargo(100100,1500.0)
 print("===============================================")
-conta.registraPoliza(pol_3)
-print('Posterior al registro de la póliza 3')
-print(conta)
+try:
+  conta.registraPoliza(pol_3)
+except Exception as ex:
+  print(ex.args[0])
+finally:  
+  print('Posterior al registro de la póliza 3')
+  print(conta)
+
 print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
 pol_4 = PolizaContable(4,dt.datetime.today().strftime("%Y%m%d_%H%M%S"),"Venta en 1000.0, al contado de mercancia que costó 750.0")
 pol_4.abono(100200,750.0)
@@ -335,23 +379,49 @@ pol_4.cargo(500100,750.0)
 pol_4.abono(400100,1000.0)
 pol_4.cargo(100100,1000.0)
 print("===============================================")
-conta.registraPoliza(pol_4)
-print('Posterior al registro de la póliza 4')
-print(conta)
+try:
+  conta.registraPoliza(pol_4)
+except Exception as ex:
+  print(ex.args[0])
+finally:  
+  print('Posterior al registro de la póliza 4')
+  print(conta)
+print('>>>>>>>> [2.5] Ejer_1: Implementar la eciacón del balance A=P+C+I-E')
 print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
-print("=====================================================")
-print("=====================================================")
-print("ooooooooooooooooooooooooooooooooooooooooooooooooooooo")
-#Verificar el estado de la contabilidad por medio del balance.
 print( conta.impBalance())
+print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
+print()
+print('>>>>>>>> [3.5] Ejer_2: Implementar el cierre del ejercicio')
+print('Cierre del ejercicio')
 conta.cierre()
-print('Posterior al Cierre')
-print(conta)
+print()
+print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
+print('Posterior al cierre:')
 print( conta.impBalance())
-print('Posterior al PTU del ejercicio')
-print(conta.PTU())
-print(conta)
-print('Posterior al ISR del ejercicio')
-print(conta.ISR())
+print("+++++++++++++++++++++++++++++++++++++++++++++++++++++")
+print()
+print('>>>>>>>> [2.5] Ejer_3: La póliza debe guardar las pólizas aceptadas en una colección')
+print()
+#
+conta.polizasRegistradas() # despliega las pólizas registradas
+#
+print('>>>>>>>> [1.5] Ejer_4: La contabilidad administra la creación de la póliza y la creación de los movimientos')
+print()
+#
+conta.creaPoliza(5,"Aumento de Capital") #el timestamp lo maneja la contabilidad
+conta.abono(300000,5000.00)
+conta.cargo(100100,5000.00)
+try:
+  conta.registraPolizaConta()
+  print("Registro Exitoso")
+except Exception as ex:
+  print(ex.args[0])
+
+print('====================== STATUS FINAL =================')
 print(conta)
 
+
+#
+#
+#
+#
